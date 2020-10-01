@@ -44,9 +44,8 @@ def build_df(
                     b_arg_mod_index.append(i)
                     b_arg_mod_res.append(_res[0])
             serie = pd.Series(data=b_arg_mod_res, index=b_arg_mod_index, name=role)
-
-        elif role in used_roles.embeddable:
-            if role == 'B-V':
+            
+        elif role == "B-V":
                 data = []
                 for statement in postproc_roles:
                     if role in statement:
@@ -60,17 +59,19 @@ def build_df(
                     data=data,
                     name=role,
                 )
-            else:
-                # Nullable integer
-                _dtype = clustering_res[role].dtype.name.replace("ui", "UI")
-                serie = pd.Series(
-                    data=clustering_res[role],
-                    index=statement_index[role],
-                    dtype=_dtype,
-                    name=role,
-                )
-                if clustering_mask is not True:
-                    serie = serie[clustering_mask[role]]
+
+        elif role in used_roles.embeddable:
+            
+            # Nullable integer
+            _dtype = clustering_res[role].dtype.name.replace("ui", "UI")
+            serie = pd.Series(
+                data=clustering_res[role],
+                index=statement_index[role],
+                dtype=_dtype,
+                name=role,
+            )
+            if clustering_mask is not True:
+                serie = serie[clustering_mask[role]]
 
         series.append(serie)
 

@@ -10,6 +10,7 @@ from nltk.tokenize import sent_tokenize
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
 
 def dict_concatenate(d_list, axis=0):
     d_non_empty = [d for d in d_list if d]
@@ -202,9 +203,9 @@ def preprocess(
     strip: bool = True,
     remove_whitespaces: bool = True,
     lemmatize: bool = False,
-    stem: bool = True,
-    tags_to_keep: Optional[List[str]] = ['V', 'N', 'J'],
-    remove_n_letter_words: Optional[int] = 1
+    stem: bool = False,
+    tags_to_keep: Optional[List[str]] = None,
+    remove_n_letter_words: Optional[int] = None
 ) -> List[str]:
     """
     Preprocess a list of sentences for word embedding.
@@ -220,7 +221,7 @@ def preprocess(
         remove_whitespaces: whether to remove superfluous whitespaceing by " ".join(str.split(())
         lemmatize: whether to lemmatize using nltk.WordNetLemmatizer
         stem: whether to stem using nltk.SnowballStemmer("english")
-        tags_to_keep: list of grammatical tags to keep (default is verbs, nouns and adjectives)
+        tags_to_keep: list of grammatical tags to keep (common tags: ['V', 'N', 'J'])
         remove_n_letter_words: drop words lesser or equal to n letters (default is 1)
     Returns:
         Processed list of sentences
@@ -249,9 +250,9 @@ def preprocess(
         raise ValueError("remove stop words make sense only for lowercase")
 
     # remove chars
-    if remove_punctuation is True:
+    if remove_punctuation:
         remove_chars += string.punctuation
-    if remove_digits is True:
+    if remove_digits:
         remove_chars += string.digits
     if remove_chars:
         sentences = [re.sub(f"[{remove_chars}]", "", str(sent)) for sent in sentences]
@@ -401,40 +402,60 @@ def clean_verbs(
 ) -> List[dict]:
     """
     Replace verbs by their most frequent synonym or antonym. 
-    In addition, if a word is replaced by its antonym, the argumnt B-ARGM-NEG is replaced by its opposite boolean value 
-    (to preserve the meaning of the statement).
+    If a verb is combined with a negation in the statement (e.g. 'not increase'), it is replaced by its most frequent antonym and the
+    negation is removed (e.g. "decrease").
     """
     
     new_roles_all = []
 
     for roles in tqdm(postproc_roles_all):
         new_roles = roles.copy()
-        if 'B-V' in roles:
+        if 'B-V' in roles: 
             verb = ' '.join(new_roles['B-V'])
-            
-            synonyms = find_synonyms(verb)
-            antonyms = find_antonyms(verb)
-            temp1 = list(set(synonyms))
-            temp1.append(verb)
-            temp2 = list(set(antonyms))
-            temp3 = temp1 + temp2
-            
-            freq = 0
-            for candidate in temp3:
-                if candidate in verb_counts:
-                    if verb_counts[candidate] >= freq:
-                        freq = verb_counts[candidate]
-                        most_freq_verb = candidate
-            
-            if most_freq_verb in temp1:
-                new_roles['B-V'] = [most_freq_verb]
-            
-            elif most_freq_verb in temp2:
-                new_roles['B-V'] = [most_freq_verb]
-                if "'B-ARGM-NEG'" in roles:
-                    new_roles['B-ARGM-NEG'] = not new_roles['B-ARGM-NEG']
+            if 'B-ARGM-NEG' in roles:
+                antonyms = find_antonyms(verb)
+                temp = list(set(antonyms))
+
+                freq = 0
+                most_freq_verb = None
+                
+                for candidate in temp:
+                    if candidate in verb_counts:
+                        if verb_counts[candidate] >= freq:
+                            freq = verb_counts[candidate]
+                            most_freq_verb = candidate
+
+                if most_freq_verb is not None:
+                    new_roles['B-V'] = [most_freq_verb]
+                    del new_roles['B-ARGM-NEG'] 
+                    
                 else:
-                    new_roles['B-ARGM-NEG'] = True
+                    synonyms = find_synonyms(verb)
+                    temp = list(set(synonyms))
+                    temp.append(verb)
+
+                    freq = 0
+                    for candidate in temp:
+                        if candidate in verb_counts:
+                            if verb_counts[candidate] >= freq:
+                                freq = verb_counts[candidate]
+                                most_freq_verb = candidate
+
+                    new_roles['B-V'] = [most_freq_verb]
+            
+            else:
+                synonyms = find_synonyms(verb)
+                temp = list(set(synonyms))
+                temp.append(verb)
+
+                freq = 0
+                for candidate in temp:
+                    if candidate in verb_counts:
+                        if verb_counts[candidate] >= freq:
+                            freq = verb_counts[candidate]
+                            most_freq_verb = candidate
+
+                new_roles['B-V'] = [most_freq_verb]
 
         new_roles_all.append(new_roles)
 
@@ -467,7 +488,7 @@ class UsedRoles:
         "B-ARGM-MOD": True,
         "B-ARGM-NEG": True,
     }
-    _not_embeddable = ("B-ARGM-MOD", "B-ARGM-NEG")
+    _not_embeddable = ("B-ARGM-MOD", "B-ARGM-NEG", "B-V")
 
     def __init__(self, roles: Optional[Dict[str, bool]] = None):
         if roles is not None:
