@@ -150,7 +150,7 @@ def label_clusters(
 
 
 def label_clusters_most_freq(
-    *, clustering_res, postproc_roles, statement_index, clustering_mask=True,
+    *, clustering_res, postproc_roles, statement_index, clustering_mask=True, topn = 1
 ):
     labels = {}
     for role, clustering in clustering_res.items():
@@ -171,7 +171,7 @@ def label_clusters_most_freq(
         )
 
         labels[role] = {
-            k: Counter(el[1] for el in ngrams).most_common(2)
+            k: Counter(el[1] for el in ngrams).most_common(topn)
             for k, ngrams in grouped_data
         }
 
@@ -181,5 +181,5 @@ def label_clusters_most_freq(
                     f"Multiple labels - 2 shown: \n  labels[{role}][{k}]={v}. First one is picked.",
                     RuntimeWarning,
                 )
-            labels[role][k] = list(v[0])
+            labels[role][k] = list(v)
     return labels

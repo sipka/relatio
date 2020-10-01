@@ -171,7 +171,7 @@ def group_sentences_in_batches(
     return batches
 
 
-def _get_wordnet_pos(word):
+def _get_wordnet_pos_for_lemmatization(word):
     """Map POS tag to first character lemmatize() accepts"""
     tag = pos_tag([word])[0][1][0].upper()
     tag_dict = {
@@ -183,6 +183,14 @@ def _get_wordnet_pos(word):
 
     return tag_dict.get(tag, wordnet.NOUN)
 
+def _get_wordnet_pos(word):
+    """Get POS tag"""
+    tag = pos_tag([word])[0][1][0].upper()
+
+    return tag
+
+wnl = WordNetLemmatizer()
+f_lemmatize = wnl.lemmatize
 
 def preprocess(
     sentences: List[str],
@@ -194,7 +202,9 @@ def preprocess(
     strip: bool = True,
     remove_whitespaces: bool = True,
     lemmatize: bool = False,
-    stem: bool = False,
+    stem: bool = True,
+    tags_to_keep: Optional[List[str]] = ['V', 'N', 'J'],
+    remove_n_letter_words: Optional[int] = 1
 ) -> List[str]:
     """
     Preprocess a list of sentences for word embedding.
@@ -210,6 +220,8 @@ def preprocess(
         remove_whitespaces: whether to remove superfluous whitespaceing by " ".join(str.split(())
         lemmatize: whether to lemmatize using nltk.WordNetLemmatizer
         stem: whether to stem using nltk.SnowballStemmer("english")
+        tags_to_keep: list of grammatical tags to keep (default is verbs, nouns and adjectives)
+        remove_n_letter_words: drop words lesser or equal to n letters (default is 1)
     Returns:
         Processed list of sentences
 
@@ -242,7 +254,7 @@ def preprocess(
     if remove_digits is True:
         remove_chars += string.digits
     if remove_chars:
-        sentences = [re.sub(f"[{remove_chars}]", "", sent) for sent in sentences]
+        sentences = [re.sub(f"[{remove_chars}]", "", str(sent)) for sent in sentences]
 
     # lowercase, strip and remove superfluous white spaces
     if lowercase:
@@ -252,17 +264,26 @@ def preprocess(
     if remove_whitespaces:
         sentences = [" ".join(sent.split()) for sent in sentences]
 
+    # lemmatize
     if lemmatize:
-        wnl = WordNetLemmatizer()
-        f_lemmatize = wnl.lemmatize
 
         sentences = [
             " ".join(
-                [f_lemmatize(word, _get_wordnet_pos(word)) for word in sent.split()]
+                [f_lemmatize(word, _get_wordnet_pos_for_lemmatization(word)) for word in sent.split()]
+            )
+            for sent in sentences
+        ]
+    
+    # keep specific nltk tags
+    if tags_to_keep is not None:
+        sentences = [
+            " ".join(
+                [word for word in sent.split() if _get_wordnet_pos(word) in tags_to_keep]
             )
             for sent in sentences
         ]
 
+    # stem    
     if stem:
         stemmer = SnowballStemmer("english")
         f_stem = stemmer.stem
@@ -270,15 +291,154 @@ def preprocess(
         sentences = [
             " ".join([f_stem(word) for word in sent.split()]) for sent in sentences
         ]
+     
+    # drop stopwords
     if stop_words is not None:
         sentences = [
             " ".join([word for word in sent.split() if word not in stop_words])
             for sent in sentences
         ]
-    # TODO ignore stopwords
-    # TODO input singledispatch
+    
+    # remove short words < n
+    if remove_n_letter_words is not None:    
+        sentences = [
+            " ".join([word for word in sent.split() if len(word) > remove_n_letter_words]) for sent in sentences
+        ]
 
     return sentences
+
+def get_statement_counts(
+    postproc_roles_all: List[dict]
+) -> dict:
+    """
+    Get statement frequency within the corpus from preprocessed semantic roles.
+    """
+
+    counts = {}
+
+    for statement in tqdm(postproc_roles_all):
+        temp = ''
+        for value in statement.values():
+            if type(value) == bool:
+                value = [str(value)]
+                temp = temp + ''.join(value) 
+            else:
+                temp = temp + ''.join(value)
+        if temp in counts:
+            counts[temp] += 1
+        else:
+            counts[temp] = 1
+                          
+    return counts
+
+def get_role_counts(
+    postproc_roles_all: List[dict]
+) -> dict:
+    """
+    Get role frequency within the corpus from preprocessed semantic roles.
+    """
+
+    counts = {}
+
+    for statement in tqdm(postproc_roles_all):
+        for key in statement.keys():
+            if key in ['B-V', 'ARGO', 'ARG1', 'ARG2']:
+                temp = ' '.join(statement[key])
+                if temp in counts:
+                    counts[temp] += 1
+                else:
+                    counts[temp] = 1
+                        
+    return counts
+
+def get_verb_counts(
+    postproc_roles_all: List[dict]
+) -> dict:
+    """
+    Get verb frequency within the corpus from preprocessed semantic roles.
+    """
+
+    counts = {}
+
+    for statement in tqdm(postproc_roles_all):
+        if 'B-V' in statement:
+            verb = ' '.join(statement['B-V'])
+            if verb in counts:
+                counts[verb] += 1
+            else:
+                counts[verb] = 1
+    
+    return counts
+
+def find_synonyms(
+    verb: str
+) -> list:
+    """
+    Find synonyms of a given word based on wordnet.
+    """
+    synonyms = []
+    for syn in wordnet.synsets(verb, pos = wordnet.VERB): 
+        for l in syn.lemmas(): 
+            synonyms.append(l.name()) 
+    return(list(set(synonyms)))
+
+def find_antonyms(
+    verb: str
+) -> list:
+    """
+    Find antonyms of a given word based on wordnet.
+    """
+    antonyms = []
+    for syn in wordnet.synsets(verb, pos = wordnet.VERB): 
+        for l in syn.lemmas(): 
+            if l.antonyms(): 
+                antonyms.append(l.antonyms()[0].name())
+    return(list(set(antonyms)))
+
+def clean_verbs(
+    postproc_roles_all: List[dict], 
+    verb_counts: dict
+) -> List[dict]:
+    """
+    Replace verbs by their most frequent synonym or antonym. 
+    In addition, if a word is replaced by its antonym, the argumnt B-ARGM-NEG is replaced by its opposite boolean value 
+    (to preserve the meaning of the statement).
+    """
+    
+    new_roles_all = []
+
+    for roles in tqdm(postproc_roles_all):
+        new_roles = roles.copy()
+        if 'B-V' in roles:
+            verb = ' '.join(new_roles['B-V'])
+            
+            synonyms = find_synonyms(verb)
+            antonyms = find_antonyms(verb)
+            temp1 = list(set(synonyms))
+            temp1.append(verb)
+            temp2 = list(set(antonyms))
+            temp3 = temp1 + temp2
+            
+            freq = 0
+            for candidate in temp3:
+                if candidate in verb_counts:
+                    if verb_counts[candidate] >= freq:
+                        freq = verb_counts[candidate]
+                        most_freq_verb = candidate
+            
+            if most_freq_verb in temp1:
+                new_roles['B-V'] = [most_freq_verb]
+            
+            elif most_freq_verb in temp2:
+                new_roles['B-V'] = [most_freq_verb]
+                if "'B-ARGM-NEG'" in roles:
+                    new_roles['B-ARGM-NEG'] = not new_roles['B-ARGM-NEG']
+                else:
+                    new_roles['B-ARGM-NEG'] = True
+
+        new_roles_all.append(new_roles)
+
+    return(new_roles_all)
 
 
 class UsedRoles:
