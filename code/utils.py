@@ -1,7 +1,7 @@
 import re
 import string
 import warnings
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -425,12 +425,13 @@ def get_most_frequent(tokens: List[str], token_counts: dict) -> str:
     """
     
     freq = 0
+    most_freq_token = None
     for candidate in tokens:
         if candidate in token_counts:
             if token_counts[candidate] > freq:
                 freq = token_counts[candidate]
-                most_freq_verb = candidate            
-    return most_freq_verb
+                most_freq_token = candidate            
+    return most_freq_token
     
 
 def clean_verbs(statements: List[dict], verb_counts: dict) -> List[dict]:
@@ -461,15 +462,16 @@ def clean_verbs(statements: List[dict], verb_counts: dict) -> List[dict]:
         if "B-V" in roles:
             verb = " ".join(new_roles["B-V"])
             if "B-ARGM-NEG" in roles:
-                verbs = find_antonyms(verb) + [verb]
+                verbs = find_antonyms(verb) 
                 most_freq_verb = get_most_frequent(tokens = verbs, token_counts = verb_counts)
-                if most_freq_verb != verb:
+                if most_freq_verb is not None:
                     new_roles["B-V"] = [most_freq_verb]
                     del new_roles["B-ARGM-NEG"]
             else:
                 verbs = find_synonyms(verb) + [verb]
                 most_freq_verb = get_most_frequent(tokens = verbs, token_counts = verb_counts)
-                new_roles["B-V"] = [most_freq_verb]
+                if most_freq_verb is not None:
+                    new_roles["B-V"] = [most_freq_verb]
         new_roles_all.append(new_roles)
     return new_roles_all
 
