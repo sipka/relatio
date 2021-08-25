@@ -286,7 +286,7 @@ def label_clusters_most_freq(
                 temp[cluster_num].append(tokens)
 
     for cluster_num, tokens in temp.items():
-        token_most_common = Counter(tokens).most_common(2)
+        token_most_common = Counter(tokens).most_common(20)
         if len(token_most_common) > 1 and (
             token_most_common[0][1] == token_most_common[1][1]
         ):
