@@ -17,6 +17,7 @@ from .clustering import (
     get_clusters,
     get_vectors,
     label_clusters_most_freq,
+    top_words_cluster,
     label_clusters_most_similar,
     train_cluster_model,
 )
@@ -329,12 +330,14 @@ def build_narrative_model(
         narrative_model["cluster_model"] = []
         narrative_model["cluster_labels_most_similar"] = []
         narrative_model["cluster_labels_most_freq"] = []
+        narrative_model["top_words"] = []
 
         for i, roles in enumerate(roles_with_embeddings):
 
             labels_most_similar_list = []
             kmeans_list = []
             labels_most_freq_list = []
+            top_words_cluster_list = []
 
             vecs = get_vectors(postproc_roles, model, used_roles=roles)
 
@@ -365,6 +368,10 @@ def build_narrative_model(
                 labels_most_freq = label_clusters_most_freq(
                     clustering_res=clustering_res, postproc_roles=postproc_roles
                 )
+                
+                top_cluster_words = top_words_cluster(
+                    clustering_res=clustering_res, postproc_roles=postproc_roles
+                )
 
                 if isinstance(model, (USE)) is False:
                     labels_most_similar = label_clusters_most_similar(kmeans, model)
@@ -372,12 +379,14 @@ def build_narrative_model(
 
                 kmeans_list.append(kmeans)
                 labels_most_freq_list.append(labels_most_freq)
+                top_words_cluster_list.append(top_cluster_words)
 
             narrative_model["cluster_labels_most_similar"].append(
                 labels_most_similar_list
             )
             narrative_model["cluster_model"].append(kmeans_list)
             narrative_model["cluster_labels_most_freq"].append(labels_most_freq_list)
+            narrative_model["top_words"].append(top_words_cluster_list)
 
     if output_path is not None:
         with open(output_path + "narrative_model.pk", "wb") as f:
