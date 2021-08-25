@@ -286,7 +286,7 @@ def label_clusters_most_freq(
                 temp[cluster_num].append(tokens)
 
     for cluster_num, tokens in temp.items():
-        token_most_common = Counter(tokens).most_common(20)
+        token_most_common = Counter(tokens).most_common(2)
         if len(token_most_common) > 1 and (
             token_most_common[0][1] == token_most_common[1][1]
         ):
@@ -297,6 +297,42 @@ def label_clusters_most_freq(
         labels[cluster_num] = token_most_common[0][0]
 
     return labels
+
+def top_words_cluster(
+    clustering_res: List[dict], postproc_roles: List[dict]
+) -> dict:
+
+    """
+
+    A function which labels clusters by their most frequent term.
+
+    Args:
+        clustering_res: list of dictionaries with the predicted cluster for each role
+        postproc_roles: list of statements
+
+    Returns:
+        A dictionary associating to each cluster number a label (e.g. the most frequent term in this cluster)
+
+    """
+
+    temp = {}
+    labels = {}
+
+    for i, statement in enumerate(clustering_res):
+        for role, cluster in statement.items():
+            tokens = postproc_roles[i][role]
+            cluster_num = cluster
+            if cluster_num not in temp:
+                temp[cluster_num] = [tokens]
+            else:
+                temp[cluster_num].append(tokens)
+
+    for cluster_num, tokens in temp.items():
+        
+        labels[cluster_num] = Counter(tokens).most_common(20)
+
+    return labels
+
 
 
 def label_clusters_most_similar(kmeans, model) -> dict:
