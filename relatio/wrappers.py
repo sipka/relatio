@@ -139,6 +139,7 @@ def build_narrative_model(
 
     Returns:
         A dictionary with the details of the pipeline to extract narratives from text
+        ANDREA THIS IS WORKING
 
     """
 
